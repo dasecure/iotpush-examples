@@ -1,0 +1,45 @@
+# Example: get an iotPush notification when a GitHub Actions job fails.
+#
+# Copy the "Notify iotPush on failure" step to the end of any job in your own
+# .github/workflows/*.yml. (This file lives outside .github/workflows on purpose,
+# so it does not run in this examples repo.)
+#
+# Repository secrets (Settings -> Secrets and variables -> Actions):
+#   IOTPUSH_TOPIC      your topic name
+#   IOTPUSH_TOPIC_KEY  the topic's API key
+#
+# Workflow values are passed through env, not pasted into the script, so branch
+# names or commit messages cannot inject shell code.
+name: build
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and test
+        run: make test
+
+      - name: Notify iotPush on failure
+        if: failure()
+        env:
+          IOTPUSH_TOPIC: ${{ secrets.IOTPUSH_TOPIC }}
+          IOTPUSH_TOPIC_KEY: ${{ secrets.IOTPUSH_TOPIC_KEY }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ github.workflow }}
+          JOB: ${{ github.job }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n \
+            --arg title "$REPO: $WORKFLOW failed" \
+            --arg message "Job $JOB failed on $REF" \
+            --arg url "$RUN_URL" \
+            '{title: $title, message: $message, priority: "high", tags: "ci,github", click_url: $url}' |
+          curl -sS --fail-with-body -X POST "https://www.iotpush.com/api/push/$IOTPUSH_TOPIC" \
+            -H "Authorization: Bearer $IOTPUSH_TOPIC_KEY" \
+            -H "Content-Type: application/json" \
+            --data-binary @-

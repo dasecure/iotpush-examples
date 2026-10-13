@@ -1,0 +1,34 @@
+# Home Assistant -> iotPush
+#
+# 1. Add to secrets.yaml (the whole header value, including "Bearer "):
+#      iotpush_auth: "Bearer YOUR_TOPIC_API_KEY"
+# 2. Replace YOUR_TOPIC below with your topic name.
+# 3. Merge these blocks into configuration.yaml and restart Home Assistant.
+#    (For a public topic, remove the Authorization header.)
+
+rest_command:
+  iotpush:
+    url: "https://www.iotpush.com/api/push/YOUR_TOPIC"
+    method: post
+    content_type: "application/json"
+    headers:
+      Authorization: !secret iotpush_auth
+    # tojson escapes quotes and newlines; non-ASCII titles are fine in the JSON body.
+    payload: >-
+      {"message": {{ message | tojson }},
+       "title": {{ (title | default('Home Assistant')) | tojson }},
+       "priority": {{ (priority | default('normal')) | tojson }}
+       {%- if click_url is defined %}, "click_url": {{ click_url | tojson }}{% endif %}}
+
+automation:
+  - alias: "Notify when the garage door opens"
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.garage_door
+        to: "on"
+    actions:
+      - action: rest_command.iotpush
+        data:
+          title: "Garage"
+          message: "Garage door opened at {{ now().strftime('%H:%M') }}"
+          priority: "high"
